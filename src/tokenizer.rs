@@ -1,16 +1,13 @@
-#![allow(warnings)]
-
 use std::any::Any;
 use std::iter::Peekable;
 use std::num::ParseIntError;
-use std::process::exit;
 use std::str::Chars;
 
 #[derive(Clone, Debug, Copy, PartialEq, Eq)]
 pub enum Symbol {
   LBracket, // (
   RBracket, // )
-  LBrace, // {
+  LBrace,// {
   RBrace, // }
   Semicolon, // ;
   Colon, // :
@@ -51,12 +48,22 @@ pub enum Operator {
   BitwiseShiftLeft, // <<
   BitwiseShiftRight, // >>
   QuestionMark, // ?
-  LogicalNegation,   // !
+  LogicalNegation, // !
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Keyword {
-  Int, Return, If, Else, For, Do, While, Break, Continue, String, Struct,
+  Int,
+  Return,
+  If,
+  Else,
+  For,
+  Do,
+  While,
+  Break,
+  Continue,
+  String,
+  Struct,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -68,7 +75,7 @@ pub enum Token {
   String(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tokenizer<'a> {
   code: &'a str,
   line: usize,
@@ -115,181 +122,155 @@ impl<'a> Tokenizer<'a> {
   }
 }
 
-fn work(token: Token, str: &str, line: usize, pos: usize) -> Option<TokenData> {
+fn new(token: Token,
+       str: &str,
+       line: usize,
+       pos: usize) -> Option<TokenData> {
   Some(TokenData { token, str, line, pos })
 }
 
 impl<'a> Iterator for Tokenizer<'a> {
   type Item = TokenData<'a>;
   fn next(&mut self) -> Option<Self::Item> {
+    macro_rules! symbol_token {
+      ($variant:expr, $symbol:expr) => {
+        new($variant, $symbol, self.line, self.pos)
+      };
+    }
+
+    macro_rules! operator_token {
+      ($variant:expr, $variant_extended: expr, $symbol:expr) => {
+        match self.chars.peek() {
+          Some(&'=') => {
+            self.next_char();
+            new($variant_extended, concat!($symbol, "="), self.line, self.pos - 1)
+          }
+          _ => new($variant, $symbol, self.line, self.pos),
+        }
+      }
+    }
+
     loop {
       return match self.next_char() {
         None => None,
         Some(ch) => {
           match ch {
-            // todo()! delete repeated code
-            '(' => work(Token::Symbol(Symbol::LBracket), "(", self.line, self.pos),
-            ')' => work(Token::Symbol(Symbol::RBracket), ")", self.line, self.pos),
-            '{' => work(Token::Symbol(Symbol::LBrace), "{", self.line, self.pos),
-            '}' => work(Token::Symbol(Symbol::RBrace), "}", self.line, self.pos),
-            ';' => work(Token::Symbol(Symbol::Semicolon), ";", self.line, self.pos),
-            ':' => work(Token::Symbol(Symbol::Semicolon), ":", self.line, self.pos),
-            '.' => work(Token::Symbol(Symbol::Dot), ".", self.line, self.pos),
-            ',' => work(Token::Symbol(Symbol::Comma), ",", self.line, self.pos),
+            '(' => symbol_token!(Token::Symbol(Symbol::LBracket), "("),
+            ')' => symbol_token!(Token::Symbol(Symbol::RBracket), ")"),
+            '{' => symbol_token!(Token::Symbol(Symbol::LBrace), "{"),
+            '}' => symbol_token!(Token::Symbol(Symbol::RBrace), "}"),
+            ';' => symbol_token!(Token::Symbol(Symbol::Semicolon), ";"),
+            ':' => symbol_token!(Token::Symbol(Symbol::Colon), ":"),
+            '.' => symbol_token!(Token::Symbol(Symbol::Dot), "."),
+            ',' => symbol_token!(Token::Symbol(Symbol::Comma), ","),
 
-            '+' => match self.chars.peek() {
-              Some(&'=') => {
-                self.next_char();
-                work(Token::Operator(Operator::PlusAssign), "+=", self.line, self.pos - 1)
-              }
-              _ => work(Token::Operator(Operator::Plus), "+", self.line, self.pos),
-            },
+            '+' => operator_token!(Token::Operator(Operator::Plus), Token::Operator(Operator::PlusAssign), "+"),
+            '-' => operator_token!(Token::Operator(Operator::Minus), Token::Operator(Operator::MinusAssign), "-"),
+            '/' => operator_token!(Token::Operator(Operator::Slash), Token::Operator(Operator::SlashAssign), "/"),
+            '*' => operator_token!(Token::Operator(Operator::Star), Token::Operator(Operator::SlashAssign), "*"),
+            '%' => operator_token!(Token::Operator(Operator::Modulo), Token::Operator(Operator::ModAssign), "%"),
+            '^' => operator_token!(Token::Operator(Operator::BitwiseXOR), Token::Operator(Operator::XORAssign), "^"),
+            '!' => operator_token!(Token::Operator(Operator::LogicalNegation), Token::Operator(Operator::NotEqual), "!"),
+            '=' => operator_token!(Token::Operator(Operator::Assignment), Token::Operator(Operator::EqualEqual), "="),
 
-            '-' => match self.chars.peek() {
-              Some(&'=') => {
-                self.next_char();
-                work(Token::Operator(Operator::PlusAssign), "-=", self.line, self.pos - 1)
-              }
-              _ => work(Token::Operator(Operator::Minus), "-", self.line, self.pos),
-            },
 
-            '*' => match self.chars.peek() {
-              Some(&'=') => {
-                self.next_char();
-                work(Token::Operator(Operator::StarAssign), "*=", self.line, self.pos - 1)
-              }
-              _ => work(Token::Operator(Operator::Star), "*", self.line, self.pos),
-            },
-
-            '~' => work(Token::Operator(Operator::BitwiseComplement), "~", self.line, self.pos),
-
-            '/' => match self.chars.peek() {
-              Some(&'=') => {
-                self.next_char();
-                work(Token::Operator(Operator::SlashAssign), "/=", self.line, self.pos - 1)
-              }
-              _ => work(Token::Operator(Operator::Slash), "/", self.line, self.pos),
-            },
-
-            '%' => match self.chars.peek() {
-              Some(&'=') => {
-                self.next_char();
-                work(Token::Operator(Operator::ModAssign), "%=", self.line, self.pos - 1)
-              }
-              _ => work(Token::Operator(Operator::Modulo), "%", self.line, self.pos),
-            },
-
-            '<' => match self.chars.peek() { // Noob code, but who cares : )
+            '<' => match self.chars.peek() { // bad code
               Some(&'<') => {
                 self.next_char();
                 match self.chars.peek() {
                   Some(&'=') => {
                     self.next_char();
-                    work(Token::Operator(Operator::LeftShiftAssign), "<<=", self.line, self.pos - 2)
+                    new(Token::Operator(Operator::LeftShiftAssign), "<<=", self.line, self.pos - 2)
                   }
-                  _ => work(Token::Operator(Operator::LessEqual), "<<", self.line, self.pos - 1),
+                  _ => new(Token::Operator(Operator::BitwiseShiftLeft), "<<", self.line, self.pos - 1),
                 }
               },
               Some(&'=') => {
                 self.next_char();
-                work(Token::Operator(Operator::LessEqual), "<=", self.line, self.pos - 1)
+                new(Token::Operator(Operator::LessEqual), "<=", self.line, self.pos - 1)
               },
-              _ => work(Token::Operator(Operator::LessThan), "<", self.line, self.pos),
+              _ => new(Token::Operator(Operator::LessThan), "<", self.line, self.pos),
             },
 
-            '>' => match self.chars.peek() { // Noob code, but who cares : )
+            '>' => match self.chars.peek() { // bad code
               Some(&'>') => {
                 self.next_char();
                 match self.chars.peek() {
                   Some(&'=') => {
                     self.next_char();
-                    work(Token::Operator(Operator::LeftShiftAssign), ">>=", self.line, self.pos - 2)
+                    new(Token::Operator(Operator::BitwiseShiftRight), ">>=", self.line, self.pos - 2)
                   },
-                  _ => work(Token::Operator(Operator::LessEqual), ">>", self.line, self.pos - 1),
+                  _ => new(Token::Operator(Operator::BitwiseShiftRight), ">>", self.line, self.pos - 1),
                 }
               },
               Some(&'=') => {
                 self.next_char();
-                work(Token::Operator(Operator::LessEqual), ">=", self.line, self.pos - 1)
+                new(Token::Operator(Operator::GreaterEqual), ">=", self.line, self.pos - 1)
               },
-              _ => work(Token::Operator(Operator::LessThan), ">", self.line, self.pos),
+              _ => new(Token::Operator(Operator::GreaterThan), ">", self.line, self.pos),
             },
 
             '&' => match self.chars.peek() {
               Some(&'=') => {
                 self.next_char();
-                work(Token::Operator(Operator::ANDAssign), "&=", self.line, self.pos - 1)
+                new(Token::Operator(Operator::ANDAssign), "&=", self.line, self.pos - 1)
               },
               Some(&'&') => {
                 self.next_char();
-                work(Token::Operator(Operator::ANDAssign), "&&", self.line, self.pos - 1)
+                new(Token::Operator(Operator::And), "&&", self.line, self.pos - 1)
               },
-              _ => work(Token::Operator(Operator::BitwiseAND), "&", self.line, self.pos),
+              _ => new(Token::Operator(Operator::BitwiseAND), "&", self.line, self.pos),
             },
 
             '|' => match self.chars.peek() {
               Some(&'=') => {
                 self.next_char();
 
-                work(Token::Operator(Operator::ORAssign), "|=", self.line, self.pos - 1)
+                new(Token::Operator(Operator::ORAssign), "|=", self.line, self.pos - 1)
               },
               Some(&'|') => {
                 self.next_char();
-                work(Token::Operator(Operator::Or), "||", self.line, self.pos - 1)
+                new(Token::Operator(Operator::Or), "||", self.line, self.pos - 1)
               },
-              _ => work(Token::Operator(Operator::BitwiseOR), "|", self.line, self.pos),
-            },
-
-            '^' => match self.chars.peek() {
-              Some(&'=') => {
-                self.next_char();
-                work(Token::Operator(Operator::ORAssign), "^=", self.line, self.pos - 1)
-              },
-              _ => work(Token::Operator(Operator::BitwiseXOR), "^", self.line, self.pos),
+              _ => new(Token::Operator(Operator::BitwiseOR), "|", self.line, self.pos),
             },
 
             _ => {
-              if ch.is_whitespace() || ch == '\n' {
-                continue;
-              } else if ch.is_alphabetic() || ch.is_numeric() || ch == '_' {
-                let mut parse = ch.to_string();
-                let mut start = self.pos;
-                while let Some(fc) = self.chars.peek() {
-                  if fc.is_alphabetic() || fc.is_numeric() || fc == &'_' {
-                    parse.push(self.next_char().unwrap());
-                  } else {
-                    break;
-                  }
-                }
-                println!();
-                assert_eq!(self.pos - start + 1, parse.len());
-                let slice = &self.code[start-1..=self.pos-1];
-                // Return, If, Else, For, Do, While, Break, Continue, String, Struct,
-                // todo()! void, and other types...
-                let pos = self.pos - slice.len();
-                return match slice.to_lowercase().as_str() {
-                  "int" => work(Token::Keyword(Keyword::Int), "int", self.line, pos),
-                  "return" => work(Token::Keyword(Keyword::Return), "return", self.line, pos),
-                  "if" => work(Token::Keyword(Keyword::If), "if", self.line, pos),
-                  "else" => work(Token::Keyword(Keyword::Else), "else", self.line, pos),
-                  "for" => work(Token::Keyword(Keyword::For), "for", self.line, pos),
-                  "break" => work(Token::Keyword(Keyword::Break), "break", self.line, pos),
-                  "continue" => work(Token::Keyword(Keyword::Continue), "continue", self.line, pos),
-                  "string" => work(Token::Keyword(Keyword::String), "string", self.line, pos), // why????
-                  "struct" => work(Token::Keyword(Keyword::Struct), "struct", self.line, pos),
-                  _ => {
-                    return match parse.to_string().parse::<i32>() {
-                      Ok(it) => work(Token::Integer(it), slice, self.line, start),
-                      Err(_) => work(Token::String(slice.clone().to_string()), slice, self.line, start),
-                    };
-                  }
-                }
+              if ch.is_whitespace() || ch == '\n' { continue; }
+
+              if !ch.is_alphabetic() && !ch.is_numeric() && ch != '_' { unimplemented!() }
+
+              let mut parse = ch.to_string();
+              let mut start = self.pos;
+
+              while let Some(fc) = self.chars.peek() {
+                if !fc.is_alphabetic() && !fc.is_numeric() && fc != &'_' { break; }
+                parse.push(self.next_char().unwrap());
               }
-              unimplemented!()
+
+              let slice = &self.code[start - 1..=self.pos - 1];
+              let pos = self.pos - slice.len();
+
+              let token_type = match slice.to_lowercase().as_str() {
+                "int" => Token::Keyword(Keyword::Int),
+                "return" => Token::Keyword(Keyword::Return),
+                "if" => Token::Keyword(Keyword::If),
+                "else" => Token::Keyword(Keyword::Else),
+                "for" => Token::Keyword(Keyword::For),
+                "break" => Token::Keyword(Keyword::Break),
+                "continue" => Token::Keyword(Keyword::Continue),
+                "string" => Token::Keyword(Keyword::String),
+                "struct" => Token::Keyword(Keyword::Struct),
+                _ => match parse.to_string().parse::<i32>() {
+                  Ok(it) => Token::Integer(it),
+                  Err(_) => Token::String(slice.clone().to_string()),
+                },
+              };
+              return new(token_type, slice, self.line, pos);
             }
           }
         }
-      }
+      };
     }
   }
 }
@@ -328,8 +309,26 @@ fn foo1() {
 }
 
 #[test]
-fn real_code() {
-  let code = "int main() { \n return 0; \n }";
+fn real_code1() {
+  let code = "
+  void foo() {
+     return 0;
+  }";
+  // it's actually an invalid example, but while parsing it is not important
   let mut tokenizer = Tokenizer::new(code);
-  assert_eq!(tokenizer.nth(6).unwrap().token, Token::Integer(0));
+  assert_eq!(tokenizer.clone().nth(0).unwrap().token, Token::String(String::from("void")));
+  assert_eq!(tokenizer.nth(5).unwrap().token, Token::Keyword(Keyword::Return));
+}
+
+#[test]
+fn real_code2() {
+  let code = "
+  int foo() {
+     int x = 3;
+     int y = (x != 2);
+     return 0;
+  }";
+  // it's actually an invalid example, but while parsing it is not important
+  let mut tokenizer = Tokenizer::new(code);
+  // todo!() - test!
 }

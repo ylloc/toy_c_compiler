@@ -1,9 +1,5 @@
-#![allow(warnings)]
-
-
-extern crate core;
-
 mod tokenizer;
+mod ast;
 
 fn main() {
     println!("Hello, world!");
