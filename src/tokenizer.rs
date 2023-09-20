@@ -105,7 +105,7 @@ impl<'a> Tokenizer<'a> {
       Some(ch) => {
         if ch == '\n' {
           self.line += 1;
-          self.pos = 0;
+          self.pos += 1;
         } else {
           self.pos += 1;
         }
@@ -128,8 +128,8 @@ impl<'a> Iterator for Tokenizer<'a> {
         Some(ch) => {
           match ch {
             // todo()! delete repeated code
-            '(' => work(Token::Symbol(Symbol::LBracket), ")", self.line, self.pos),
-            ')' => work(Token::Symbol(Symbol::RBracket), "(", self.line, self.pos),
+            '(' => work(Token::Symbol(Symbol::LBracket), "(", self.line, self.pos),
+            ')' => work(Token::Symbol(Symbol::RBracket), ")", self.line, self.pos),
             '{' => work(Token::Symbol(Symbol::LBrace), "{", self.line, self.pos),
             '}' => work(Token::Symbol(Symbol::RBrace), "}", self.line, self.pos),
             ';' => work(Token::Symbol(Symbol::Semicolon), ";", self.line, self.pos),
@@ -249,7 +249,7 @@ impl<'a> Iterator for Tokenizer<'a> {
             },
 
             _ => {
-              if ch.is_whitespace() {
+              if ch.is_whitespace() || ch == '\n' {
                 continue;
               } else if ch.is_alphabetic() || ch.is_numeric() || ch == '_' {
                 let mut parse = ch.to_string();
@@ -261,6 +261,8 @@ impl<'a> Iterator for Tokenizer<'a> {
                     break;
                   }
                 }
+                println!();
+                assert_eq!(self.pos - start + 1, parse.len());
                 let slice = &self.code[start-1..=self.pos-1];
                 // Return, If, Else, For, Do, While, Break, Continue, String, Struct,
                 // todo()! void, and other types...
@@ -276,14 +278,13 @@ impl<'a> Iterator for Tokenizer<'a> {
                   "string" => work(Token::Keyword(Keyword::String), "string", self.line, pos), // why????
                   "struct" => work(Token::Keyword(Keyword::Struct), "struct", self.line, pos),
                   _ => {
-                    return match slice.to_string().parse::<i32>() {
+                    return match parse.to_string().parse::<i32>() {
                       Ok(it) => work(Token::Integer(it), slice, self.line, start),
                       Err(_) => work(Token::String(slice.clone().to_string()), slice, self.line, start),
                     };
                   }
                 }
               }
-              self.next_char();
               unimplemented!()
             }
           }
@@ -323,6 +324,12 @@ fn foo1() {
 
   let code = "struct C {};";
   let mut tokenizer = Tokenizer::new(code);
-
   println!("{:?}", tokenizer.next().unwrap());
+}
+
+#[test]
+fn real_code() {
+  let code = "int main() { \n return 0; \n }";
+  let mut tokenizer = Tokenizer::new(code);
+  assert_eq!(tokenizer.nth(6).unwrap().token, Token::Integer(0));
 }
